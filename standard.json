@@ -1,0 +1,83 @@
+{
+  "message_type": {
+    "ENVOI": ["IMAGE", "AUDIO", "TEXT", "SENSOR"],
+    "RECEPTION": ["IMAGE", "AUDIO", "TEXT", "SENSOR"],
+    "OTHER": ["DECLARATION", "SYS_MESSAGE", "WARNING"]
+  },
+  "sensor_id": {
+    "enum": ["LIGHT", "BUTTON", "JOYSTICK", "TEMPERATURE", "RFID", "LED", "ACCELEROMETER"]
+  },
+  "message_schema": {
+    "type": "object",
+    "properties": {
+      "message_type": {
+        "type": "string"
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "emitter": { "type": "string" },
+          "receiver": { "type": "string" },
+          "sensor_id": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "sensor_value_schemas": {
+    "BUTTON": {
+      "type": "object",
+      "properties": {
+        "isPressed": { "type": "boolean" }
+      }
+    },
+    "JOYSTICK": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "button": { "type": "boolean" }
+      }
+    },
+    "LIGHT": {
+      "type": "object",
+      "properties": {
+        "raw": { "type": "integer" },
+        "percentage": { "type": "integer" }
+      }
+    },
+    "TEMPERATURE": {
+      "type": "object",
+      "properties": {
+        "temperature": { "type": "number" },
+        "humidity": { "type": "number" }
+      }
+    },
+    "RFID": {
+      "type": "object",
+      "properties": {
+        "detected": { "type": "boolean" },
+        "uud": { "type": "string" }
+      }
+    },
+    "LED": {
+      "type": "object",
+      "properties": {
+        "led_id": { "type": "integer" },
+        "state": { "type": "string" }
+      }
+    },
+    "ACCELEROMETER": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "z": { "type": "integer" }
+      }
+    }
+  }
+}

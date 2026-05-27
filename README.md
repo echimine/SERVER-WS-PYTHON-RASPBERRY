@@ -34,6 +34,34 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+### Synthese vocale Piper
+
+Le serveur prononce localement uniquement les messages texte emis par
+`ANALYSEUR` (`message_type: "ENVOI_TEXT"` et `data.emitter: "ANALYSEUR"`).
+La lecture est executee dans un thread separe et ne bloque pas le routage
+WebSocket.
+
+Telecharger une voix Piper, par exemple une voix francaise :
+
+```bash
+.venv/bin/python -m piper.download_voices fr_FR-siwis-medium
+```
+
+Avant de demarrer le serveur sur le Raspberry Pi, definir le modele a
+utiliser et, si necessaire, le lecteur audio :
+
+```bash
+export PIPER_MODEL="/chemin/vers/fr_FR-siwis-medium.onnx"
+export PIPER_PLAYER="aplay -q"
+```
+
+`PIPER_PLAYER` est optionnelle et vaut `aplay -q` par defaut. Si Piper ou
+la sortie audio ne sont pas disponibles, le serveur continue a router les
+messages et affiche l'erreur de diction dans le terminal.
+
+Documentation de l'API utilisee :
+[Piper Python API](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md).
+
 ## Lancer le serveur WebSocket
 
 ```bash

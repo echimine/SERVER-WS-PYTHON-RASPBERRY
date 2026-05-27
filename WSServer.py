@@ -1,6 +1,12 @@
 from websocket_server import WebsocketServer
-import threading
 import base64
+import os
+import queue
+import shlex
+import subprocess
+import tempfile
+import threading
+import wave
 from datetime import datetime
 
 from Context import Context
@@ -20,6 +26,9 @@ class WSServer:
         self.client_metadata = {}  # {username: {connected_at, last_activity}}
         self.admin_clients = []    # List of admin websockets
         self.running = False
+        self.tts_queue = queue.Queue()
+        self.last_tts_text = None
+        self.tts_voice = None
 
     def on_new_client(self, client, server):
         print(f"\n[+] Client connecté: id={client['id']} addr={client['address']}")
@@ -121,6 +130,71 @@ class WSServer:
         msg = Message(MessageType.ADMIN.CLIENT_LIST_FULL, emitter="SERVER", receiver="ADMIN", value=clients_data)
         self.server.send_message(admin_client, msg.to_json())
 
+    def enqueue_speech(self, text):
+        """Ajoute un texte recu a la file de diction Piper."""
+        if isinstance(text, str) and text.strip():
+            self.last_tts_text = text.strip()
+            self.tts_queue.put(self.last_tts_text)
+            print(f"[PIPER] Texte recu pour diction : {self.last_tts_text}")
+
+    def should_speak(self, message):
+        """Indique si un message entrant doit etre prononce localement."""
+        return (
+            message.message_type == MessageType.ENVOI.TEXT
+            and message.emitter == "ANALYSEUR"
+            and isinstance(message.value, str)
+            and bool(message.value.strip())
+        )
+
+    def get_tts_voice(self):
+        """Charge la voix Piper une seule fois, au premier texte a lire."""
+        if self.tts_voice is not None:
+            return self.tts_voice
+
+        model = os.environ.get("PIPER_MODEL")
+        if not model:
+            raise RuntimeError("variable PIPER_MODEL absente")
+
+        from piper import PiperVoice
+
+        self.tts_voice = PiperVoice.load(model)
+        return self.tts_voice
+
+    def speak_text(self, text):
+        """Synthetise un texte avec Piper puis le joue sur la sortie audio."""
+        voice = self.get_tts_voice()
+        player_cmd = shlex.split(os.environ.get("PIPER_PLAYER", "aplay -q"))
+        if not player_cmd:
+            raise RuntimeError("variable PIPER_PLAYER vide")
+
+        wav_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+                wav_path = wav_file.name
+
+            with wave.open(wav_path, "wb") as wav_file:
+                voice.synthesize_wav(text, wav_file)
+
+            subprocess.run(player_cmd + [wav_path], check=True)
+            print("[PIPER] Diction terminee.")
+        finally:
+            if wav_path:
+                try:
+                    os.unlink(wav_path)
+                except OSError:
+                    pass
+
+    def tts_loop(self):
+        """Genere et lit les messages un par un sans bloquer le serveur WS."""
+        while self.running:
+            text = self.tts_queue.get()
+            try:
+                self.speak_text(text)
+            except Exception as exc:
+                print(f"[PIPER] Erreur de diction : {exc}")
+            finally:
+                self.tts_queue.task_done()
+
     def on_message_received(self, client, server, message):
         print(f"\n[message reçu] {message}")
         received_msg = Message.from_json(message)
@@ -155,6 +229,9 @@ class WSServer:
             print(f"CLIENTS = {users_list}")
 
         elif received_msg.message_type in [MessageType.ENVOI.TEXT, MessageType.ENVOI.IMAGE, MessageType.ENVOI.AUDIO, MessageType.ENVOI.VIDEO, MessageType.ENVOI.SENSOR]:
+            if self.should_speak(received_msg):
+                self.enqueue_speech(received_msg.value)
+
             # Met à jour last_activity pour l'émetteur
             if received_msg.emitter in self.client_metadata:
                 self.client_metadata[received_msg.emitter]['last_activity'] = datetime.now().isoformat()
@@ -289,6 +366,8 @@ class WSServer:
 
         input_thread = threading.Thread(target=self.input_loop, daemon=True)
         input_thread.start()
+        tts_thread = threading.Thread(target=self.tts_loop, daemon=True, name="piper-worker")
+        tts_thread.start()
 
         self.server.run_forever()
 
